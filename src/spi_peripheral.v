@@ -20,7 +20,7 @@ module spi_peripheral (
     reg [1:0] SCLK_synced;
 
     // tracking sclk edges (up to 16 reads = 5 bits needed to count)
-    reg[4:0] SCLK_count;
+    reg [4:0] SCLK_count;
 
     reg [15:0] data;
 
@@ -58,7 +58,7 @@ module spi_peripheral (
             else if(SCLK_synced == 2'b01) begin
                 if(SCLK_count < 5'd16) begin
                     data <= {data[14:0], COPI_synced[1]};
-                    SCLK_count += 1;
+                    SCLK_count <= SCLK_count + 1;
                 end
             end
 
