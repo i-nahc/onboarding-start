@@ -15,8 +15,6 @@ module tt_um_uwasic_onboarding_isaac_chan(
     input  wire       clk,      // clock
     input  wire       rst_n     // reset_n - low to reset
 );
-
-  wire [15:0] outputs; 
   
   assign uio_oe = 0;
 
