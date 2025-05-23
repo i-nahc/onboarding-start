@@ -149,13 +149,136 @@ async def test_spi(dut):
 
     dut._log.info("SPI test completed successfully")
 
+async def get_frequency(dut):
+    start = cocotb.utils.get_sim_time(units="ns")
+    while True:
+        await ClockCycles(dut.clk, 1)
+        if(cocotb.utils.get_sim_time(units ="ns") - start > 1000000):
+            return -1
+
+        elif(dut.uo_out.value == 0):
+            break
+
+    # now low, wait for high
+    while True:
+        await ClockCycles(dut.clk, 1)
+        if(cocotb.utils.get_sim_time(units="ns") - start > 1000000):
+            return -1
+
+        elif(dut.uo_out.value != 0):
+            break
+
+    # now high wait for low
+    start_freq = cocotb.utils.get_sim_time(units="ns")
+
+    while True:
+        await ClockCycles(dut.clk, 1)
+        if(dut.uo_out.value == 0):
+            break
+
+    while True:
+        await ClockCycles(dut.clk, 1)
+        if(dut.uo_out.value != 0):
+            break
+
+    return (cocotb.utils.get_sim_time(units="ns") - start_freq) / 1E9
+
 @cocotb.test()
 async def test_pwm_freq(dut):
     # Write your test here
+    dut._log.info("Beginning PWM freq test...")
+
+    clock = Clock(dut.clk, 100, units="ns")
+    cocotb.start_soon(clock.start())
+
+    # Reset
+    dut._log.info("Reset")
+    dut.ena.value = 1
+    ncs = 1
+    bit = 0
+    sclk = 0
+    dut.ui_in.value = ui_in_logicarray(ncs, bit, sclk)
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 5)
+    dut.rst_n.value = 1
+    await ClockCycles(dut.clk, 5)
+
+    ui_in_val = await send_spi_transaction(dut, 1, 0x00, 0xFF)
+    ui_in_val = await send_spi_transaction(dut, 1, 0x01, 0xFF) 
+    ui_in_val = await send_spi_transaction(dut, 1, 0x02, 0xFF) 
+    ui_in_val = await send_spi_transaction(dut, 1, 0x03, 0xFF) 
+    ui_in_val = await send_spi_transaction(dut, 1, 0x04, 0x80)
+
+    T = await get_frequency(dut)
+    f = 1/T
+
+    assert T != -1, "Bruh Timeout"
+    assert ((f > 2970 and f < 3030)), f"Frequency out of range, got {f}"
     dut._log.info("PWM Frequency test completed successfully")
+
+async def get_duty(dut):
+    T = await get_frequency(dut)
+    if(T == -1):
+        return 0 if dut.uo_out.value == 0 else 1 # 0.00 or 1.00 duty
+
+    while True:
+        await ClockCycles(dut.clk, 1)
+        if (dut.uo_out.value == 0):
+            break
+
+    while True:
+        await ClockCycles(dut.clk, 1)
+        if(dut.uo_out.value != 0):
+            break
+            
+    start = cocotb.utils.get_sim_time(units="ns")
+
+    while True:
+        await ClockCycles(dut.clk, 1)
+        if(dut.uo_out.value == 0):
+            break
+
+    return ((cocotb.utils.get_sim_time(units="ns") - start) / 1E9)/T
+
+            
+async def run_duty(dut, percent):
+    value = int(255 * percent)
+
+    ui_in_val = await send_spi_transaction(dut, 1, 0x04, value)
+
+    tested_duty = await get_duty(dut)
+
+    assert tested_duty < percent + 0.01 and tested_duty > percent - 0.01, f"Not within range, got: {tested_duty}, expected, {percent}"
+
+    dut._log.info(f"Duty calculated: {tested_duty}, Input: {percent}")
 
 
 @cocotb.test()
 async def test_pwm_duty(dut):
     # Write your test here
+    dut._log.info("PWM Duty Cycle test beginning...")
+    clock = Clock(dut.clk, 100, units="ns")
+    cocotb.start_soon(clock.start())
+
+    # Reset
+    dut._log.info("Reset")
+    dut.ena.value = 1
+    ncs = 1
+    bit = 0
+    sclk = 0
+    dut.ui_in.value = ui_in_logicarray(ncs, bit, sclk)
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 5)
+    dut.rst_n.value = 1
+    await ClockCycles(dut.clk, 5)
+
+    ui_in_val = await send_spi_transaction(dut, 1, 0x00, 0xFF)
+    ui_in_val = await send_spi_transaction(dut, 1, 0x01, 0xFF) 
+    ui_in_val = await send_spi_transaction(dut, 1, 0x02, 0xFF) 
+    ui_in_val = await send_spi_transaction(dut, 1, 0x03, 0xFF) 
+    
+    await run_duty(dut, 0)
+    await run_duty(dut, 0.5)
+    await run_duty(dut, 1)
+
     dut._log.info("PWM Duty Cycle test completed successfully")
